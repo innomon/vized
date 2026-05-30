@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VizEd — Visual Agent Editor & AI Architect</title>
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="Visual configuration editor and AI generator for Go Agentic framework. Custom client-side BYOK tool with real-time bi-directional YAML synchronization.">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='%236366f1'/></svg>">
+  <meta name="theme-color" content="#6366f1">
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="index.css">
+  <!-- External JS Libraries (High Quality CDN) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
+</head>
+<body>
+
+  <div id="app">
+    
+    <!-- Navbar / Toolbar -->
+    <header class="navbar">
+      <div class="logo-container">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 18 22 12 16 6"></polyline>
+            <polyline points="8 6 2 12 8 18"></polyline>
+          </svg>
+        </div>
+        <span class="logo-text">VizEd</span>
+        <span class="logo-tag">BYOK PWA</span>
+      </div>
+      
+      <div class="nav-actions">
+        <button id="btn-toggle-chat" class="btn" title="Toggle AI Assistant">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+          AI Assistant
+        </button>
+        <button id="btn-key-mgr" class="btn" title="AI Chat & Key Setup">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          BYOK Settings
+        </button>
+        <button id="btn-new-project" class="btn" title="Create New Agent Profile">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          New Config
+        </button>
+        <button id="btn-import-yaml" class="btn" title="Import agent.yaml">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          Import
+        </button>
+        <button id="btn-export-yaml" class="btn btn-primary" title="Export Configuration">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          Download YAML
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="main-container">
+      
+      <!-- Left AI Assistant Chat column -->
+      <aside id="chat-sidebar" class="chat-panel">
+        <div class="panel-header">
+          <h2>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            AI Chat Architect
+          </h2>
+          <button id="btn-clear-chat" class="btn btn-icon" title="Clear Chat History">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          </button>
+        </div>
+        
+        <!-- Messages stream -->
+        <div id="chat-messages" class="chat-messages">
+          <div class="message assistant">
+            <span class="sender-label">Assistant</span>
+            <div class="message-content">
+              <p>Hi! I am your <strong>Agentic Architect</strong>. Describe the use case and agents you want to design.</p>
+              <p>For example, try one of these quick templates below, or type your own requirement!</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Suggestion Chips -->
+        <div class="suggestions-box">
+          <div class="chip" data-prompt="Design an Organic Farming Advisor agent (FarmerAgent) that has a sub-agent for Product Recommendations. It should use a Postgres database for memory and session history.">🌾 Farmer Advisor</div>
+          <div class="chip" data-prompt="Design a Medical FHIR transcription agent. It needs a builtin tool to read FHIR schemas, gemini-2.0-flash as the model, and a HelperAgent for detailed analysis.">🏥 Med-FHIR Auditor</div>
+          <div class="chip" data-prompt="Design a search agent (SearchAgent) equipped with the gemini google_search built-in tool, answering questions based on live web search.">🔍 Web Search Assistant</div>
+        </div>
+
+        <!-- Inputs Area -->
+        <div class="chat-input-area">
+          <form id="chat-form" class="chat-input-wrapper">
+            <textarea id="chat-input" class="chat-input" placeholder="Describe your agent architecture... (e.g. 'Add a Postgres memory database')"></textarea>
+            <button type="submit" id="chat-send-btn" class="chat-send-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            </button>
+          </form>
+        </div>
+      </aside>
+
+      <!-- Right Panel Area (Tabs) -->
+      <section class="workspace-panel">
+        
+        <div class="workspace-header">
+          <nav class="tab-nav">
+            <button class="tab-btn active" data-tab="tab-visual">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
+              Visual Designer
+            </button>
+            <button class="tab-btn" data-tab="tab-topology">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+              Routing Topology
+            </button>
+            <button class="tab-btn" data-tab="tab-yaml">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+              Pristine YAML Code
+            </button>
+          </nav>
+          
+          <div class="workspace-actions">
+            <span id="validation-pill" class="logo-tag" style="background:rgba(16,185,129,0.15); border-color:rgba(16,185,129,0.3); color:var(--accent-green);">
+              Config Valid
+            </span>
+          </div>
+        </div>
+
+        <div class="tab-content">
+          
+          <!-- View 1: Visual Designer GUI -->
+          <div id="tab-visual" class="view-pane active">
+            
+            <!-- Global configs -->
+            <div class="section-card">
+              <div class="section-header">
+                <h3>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx='12' cy='12' r='3'></circle><path d='M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z'></path></svg>
+                  Global Framework Settings
+                </h3>
+              </div>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label class="form-label" for="global-root-agent">Root Entry Agent</label>
+                  <select id="global-root-agent" class="form-select"></select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="session-provider">Session Store Provider</label>
+                  <select id="session-provider" class="form-select">
+                    <option value="">None / In-Memory</option>
+                    <option value="database">Database (Postgres/SQLite)</option>
+                    <option value="vertexai">VertexAI Platform</option>
+                    <option value="gnogent">Deterministic GnoVM</option>
+                  </select>
+                </div>
+                <div id="session-dsn-group" class="form-group full-width hidden">
+                  <div class="form-grid" style="grid-template-columns: 1fr 2fr 1fr; gap: 12px; width: 100%;">
+                    <div class="form-group">
+                      <label class="form-label">DB Driver</label>
+                      <input type="text" id="session-driver" class="form-input" placeholder="postgres">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Connection DSN URI</label>
+                      <input type="text" id="session-dsn" class="form-input" placeholder="postgres://user:pass@localhost:5432/dbname">
+                    </div>
+                    <div class="form-group" style="justify-content: flex-end; padding-bottom: 8px;">
+                      <label class="form-label" style="display:flex; align-items:center; gap:8px;">
+                        <input type="checkbox" id="session-migrate" style="width:16px; height:16px;"> Auto Migrate
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="memory-provider">Long Term Memory Provider</label>
+                  <select id="memory-provider" class="form-select">
+                    <option value="">None / In-Memory</option>
+                    <option value="database">Database (Postgres/SQLite)</option>
+                    <option value="prolog">Prolog logic-backed KB</option>
+                    <option value="gnogent">GnoVM Contract State</option>
+                  </select>
+                </div>
+                <div id="memory-dsn-group" class="form-group full-width hidden">
+                  <div class="form-grid" style="grid-template-columns: 1fr 2fr 1fr; gap: 12px; width: 100%;">
+                    <div class="form-group">
+                      <label class="form-label">DB Driver</label>
+                      <input type="text" id="memory-driver" class="form-input" placeholder="postgres">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Connection DSN URI</label>
+                      <input type="text" id="memory-dsn" class="form-input" placeholder="postgres://user:pass@localhost:5432/dbname">
+                    </div>
+                    <div class="form-group" style="justify-content: flex-end; padding-bottom: 8px;">
+                      <label class="form-label" style="display:flex; align-items:center; gap:8px;">
+                        <input type="checkbox" id="memory-migrate" style="width:16px; height:16px;"> Auto Migrate
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Models Registry -->
+            <div class="section-card">
+              <div class="section-header">
+                <h3>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+                  LLM Model Registry
+                </h3>
+                <button id="btn-add-model" class="btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  Add Model
+                </button>
+              </div>
+              <div id="models-list" class="card-grid">
+                <!-- Injected dynamically -->
+              </div>
+            </div>
+
+            <!-- Custom Tools Registry -->
+            <div class="section-card">
+              <div class="section-header">
+                <h3>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+                  Tools Registry
+                </h3>
+                <button id="btn-add-tool" class="btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  Add Custom Tool
+                </button>
+              </div>
+              <p class="section-description">Register functions, built-in search modules, external databases, or sandboxed execution environments for agents.</p>
+              <div id="tools-list" class="card-grid">
+                <!-- Injected dynamically -->
+              </div>
+            </div>
+
+            <!-- Agents Deck -->
+            <div class="section-card">
+              <div class="section-header">
+                <h3>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                  Agent Pipelines (Orchestrator)
+                </h3>
+                <button id="btn-add-agent" class="btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  Add Agent Node
+                </button>
+              </div>
+              <div id="agents-list" style="display:flex; flex-direction:column; gap:20px;">
+                <!-- Injected dynamically -->
+              </div>
+            </div>
+
+          </div>
+
+          <!-- View 2: Topology Visualizer -->
+          <div id="tab-topology" class="view-pane">
+            <div class="section-card" style="height:100%;">
+              <div class="section-header">
+                <h3>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+                  Transfer Routing Hierarchy
+                </h3>
+              </div>
+              <p class="section-description">A structural visualization map of your multi-agent system. Root agents coordinate tasks and delegate responsibilities to sub-agents.</p>
+              <div id="topology-graph" class="topology-container">
+                <!-- Injected dynamically -->
+              </div>
+            </div>
+          </div>
+
+          <!-- View 3: YAML Editor & Projects Panel -->
+          <div id="tab-yaml" class="view-pane">
+            <div class="editor-pane-container">
+              <!-- Text Area -->
+              <textarea id="yaml-textarea" class="editor-textarea" spellcheck="false" placeholder="# Write or paste agentic YAML here..."></textarea>
+              
+              <!-- Saved configurations sidebar -->
+              <aside class="editor-sidebar">
+                <h4>Local Project Profiles</h4>
+                <div id="project-list" class="project-list">
+                  <!-- Injected dynamically -->
+                </div>
+                <button id="btn-save-project" class="btn btn-primary" style="margin-top:auto; justify-content:center;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                  Save Active Config
+                </button>
+              </aside>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </main>
+
+    <!-- TOAST NOTIFICATION CONTAINER -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- MODAL 1: Bring Your Own Key Modal -->
+    <div id="key-modal" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            BYOK Settings
+          </h3>
+          <button class="btn btn-icon btn-close-modal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:13px; color:var(--text-secondary); line-height:1.5;">
+            Configure your AI Chat Architect settings. Select your preferred API provider, API key, base endpoint URL, and which model the AI should use to generate and refine agent config files.
+          </p>
+          <div class="form-group">
+            <label class="form-label" for="api-provider-select">API Provider</label>
+            <select id="api-provider-select" class="form-select">
+              <option value="gemini">Google Gemini</option>
+              <option value="openai">OpenAI</option>
+              <option value="ollama">Local Ollama</option>
+            </select>
+          </div>
+          <div class="form-group" id="api-base-url-group">
+            <label class="form-label" for="api-base-url-input">API Base URL (Endpoint Override)</label>
+            <input type="text" id="api-base-url-input" class="form-input" placeholder="e.g. https://api.openai.com/v1">
+          </div>
+          <div class="form-group" id="api-key-group">
+            <label class="form-label" for="api-key-input">API Key</label>
+            <input type="password" id="api-key-input" class="form-input" placeholder="Enter API Key...">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="api-model-select">Select Model</label>
+            <select id="api-model-select" class="form-select"></select>
+          </div>
+          <div class="form-group hidden" id="api-custom-model-group">
+            <label class="form-label" for="api-custom-model-input">Custom Model Name</label>
+            <input type="text" id="api-custom-model-input" class="form-input" placeholder="e.g. gemma2:27b">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-close-modal">Cancel</button>
+          <button id="btn-save-key" class="btn btn-primary">Save Settings</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 2: Add Model Modal -->
+    <div id="model-modal" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Add LLM Model Configuration</h3>
+          <button class="btn btn-icon btn-close-modal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Model Name / Alias</label>
+            <input type="text" id="m-name" class="form-input" placeholder="gemini-flash">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Provider</label>
+            <select id="m-provider" class="form-select">
+              <option value="gemini">Google Gemini</option>
+              <option value="openai">OpenAI</option>
+              <option value="ollama">Local Ollama</option>
+              <option value="ml">Local GGUF (smollm / granite)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Model ID</label>
+            <input type="text" id="m-id" class="form-input" placeholder="gemini-2.0-flash">
+          </div>
+          <div class="form-group" style="display:flex; flex-direction:row; gap:8px; align-items:center;">
+            <input type="checkbox" id="m-default" style="width:16px; height:16px;">
+            <label class="form-label" style="margin:0;">Set as Default Model</label>
+          </div>
+          <div id="m-custom-fields" class="hidden" style="display:flex; flex-direction:column; gap:12px;">
+            <div class="form-group">
+              <label class="form-label">Custom API Base URL (Ollama/Proxy)</label>
+              <input type="text" id="m-url" class="form-input" placeholder="http://localhost:11434/v1">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Local Model Path (.gguf)</label>
+              <input type="text" id="m-path" class="form-input" placeholder="./models/SmolLM2-Q4.gguf">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-close-modal">Cancel</button>
+          <button id="btn-submit-model" class="btn btn-primary">Save Model</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 3: Add Tool Modal -->
+    <div id="tool-modal" class="modal-overlay">
+      <div class="modal-content" style="max-width:550px;">
+        <div class="modal-header">
+          <h3>Add Tool Registration</h3>
+          <button class="btn btn-icon btn-close-modal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Tool Name</label>
+              <input type="text" id="t-name" class="form-input" placeholder="google_search">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Tool Type</label>
+              <select id="t-type" class="form-select">
+                <option value="gemini">Gemini Google Search</option>
+                <option value="builtin">Built-In (fs_read / math)</option>
+                <option value="sandbox">Sandbox VM (GnoVM)</option>
+                <option value="userdb">GORM User Profile DB</option>
+                <option value="wasm">WebAssembly Binary Plugin</option>
+                <option value="logic_query">Embedded Prolog KB</option>
+              </select>
+            </div>
+            <div class="form-group full-width">
+              <label class="form-label">Description</label>
+              <input type="text" id="t-desc" class="form-input" placeholder="Allows searching the web using Google Search API">
+            </div>
+          </div>
+          
+          <div id="tool-type-fields" style="display:flex; flex-direction:column; gap:12px; margin-top:8px;">
+            <!-- Dynamic fields shown via JS based on type selection -->
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-close-modal">Cancel</button>
+          <button id="btn-submit-tool" class="btn btn-primary">Save Tool</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 4: Import YAML Text Modal -->
+    <div id="import-modal" class="modal-overlay">
+      <div class="modal-content" style="max-width:600px;">
+        <div class="modal-header">
+          <h3>Import Agentic Config (YAML)</h3>
+          <button class="btn btn-icon btn-close-modal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <p style="font-size:12px; color:var(--text-secondary); margin-bottom:8px;">Paste your configuration file contents below to parse it into the visual editor:</p>
+          <textarea id="import-yaml-textarea" class="form-textarea" style="min-height:280px; font-family:var(--font-family-mono); font-size:12px;" placeholder="root_agent: RootAgent&#10;models:&#10;..."></textarea>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-close-modal">Cancel</button>
+          <button id="btn-submit-import" class="btn btn-primary">Import & Synchronize</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 5: Create Project Modal -->
+    <div id="project-modal" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Create Configuration Profile</h3>
+          <button class="btn btn-icon btn-close-modal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label" for="proj-name-input">Profile Name</label>
+            <input type="text" id="proj-name-input" class="form-input" placeholder="farmer-config">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-close-modal">Cancel</button>
+          <button id="btn-submit-project" class="btn btn-primary">Create Profile</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Main JavaScript -->
+  <script src="app.js"></script>
+</body>
+</html>

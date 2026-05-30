@@ -1,0 +1,12 @@
+{
+  "name": "vized",
+  "version": "1.0.0",
+  "description": "Visual Agent Editor (VizEd) client-side PWA for Agentic framework configurations",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx -y http-server . -p 3000 -c-1",
+    "dev": "npx -y http-server . -p 3000 -c-1"
+  },
+  "author": "Antigravity Pair",
+  "license": "MIT"
+}
