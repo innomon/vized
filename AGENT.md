@@ -55,11 +55,11 @@ Once your configuration is ready:
 1. Click **Download Config** to save it as `agent.yaml`.
 2. Move it to your local Agentic workspace:
    ```bash
-   mv ~/Downloads/agent.yaml /home/innomon/orez/adk/agentic/config/agent.yaml
+   mv ~/Downloads/agent.yaml ../agentic/config/agent.yaml
    ```
 3. Run it using the universal Go launcher:
    ```bash
-   cd /home/innomon/orez/adk/agentic
+   cd ../agentic
    ./agentic -console config/agent.yaml
    ```
 

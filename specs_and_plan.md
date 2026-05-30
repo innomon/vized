@@ -47,7 +47,7 @@ VizEd is a client-side-only Progressive Web App (PWA) designed to visually creat
 
 ## 2. Framework Schema Reference
 
-To ensure strict compliance with `/home/innomon/orez/adk/agentic`, VizEd targets the following YAML schema:
+To ensure strict compliance with `../agentic`, VizEd targets the following YAML schema:
 
 ```yaml
 root_agent: [string - entrypoint agent]
