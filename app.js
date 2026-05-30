@@ -15,6 +15,10 @@ if ('serviceWorker' in navigator) {
 // Default Configuration State
 const defaultState = {
   root_agent: "RootAgent",
+  openclaw: false,
+  webui: false,
+  a2a: false,
+  console: false,
   models: {
     "gemini-flash": {
       provider: "gemini",
@@ -212,6 +216,10 @@ function syncYAMLFromVisuals() {
     // Generate clean output object matching framework schema
     const out = {};
     if (state.root_agent) out.root_agent = state.root_agent;
+    if (state.console) out.console = true;
+    if (state.webui) out.webui = true;
+    if (state.openclaw) out.openclaw = true;
+    if (state.a2a) out.a2a = true;
     
     if (state.models && Object.keys(state.models).length > 0) {
       out.models = state.models;
@@ -275,6 +283,10 @@ function syncVisualsFromYAML(yamlText) {
     // Normalize and inject parsed parameters into working state
     const newState = {
       root_agent: parsed.root_agent || "RootAgent",
+      console: !!parsed.console,
+      webui: !!parsed.webui,
+      openclaw: !!parsed.openclaw,
+      a2a: !!parsed.a2a,
       models: parsed.models || {},
       session: parsed.session || { provider: "" },
       memory: parsed.memory || { provider: "" },
@@ -331,6 +343,17 @@ function renderVisualEditor() {
   } else {
     memoryDsnGroup.classList.add('hidden');
   }
+  
+  // Launcher Flags
+  document.getElementById('flag-console').checked = !!state.console;
+  document.getElementById('flag-webui').checked = !!state.webui;
+  document.getElementById('flag-openclaw').checked = !!state.openclaw;
+  document.getElementById('flag-a2a').checked = !!state.a2a;
+  
+  document.getElementById('flag-console-chip').classList.toggle('selected', !!state.console);
+  document.getElementById('flag-webui-chip').classList.toggle('selected', !!state.webui);
+  document.getElementById('flag-openclaw-chip').classList.toggle('selected', !!state.openclaw);
+  document.getElementById('flag-a2a-chip').classList.toggle('selected', !!state.a2a);
   
   // Model Cards
   renderModelCards();
@@ -449,6 +472,8 @@ function renderAgentCards() {
     card.className = "section-card";
     card.style.background = "rgba(20, 27, 45, 0.4)";
     
+    const aType = cfg.type || "llm";
+    
     // Build select model options
     let modelOpts = "";
     Object.keys(state.models).forEach(mName => {
@@ -480,16 +505,94 @@ function renderAgentCards() {
       `;
     });
     
-    card.innerHTML = `
-      <div class="item-card-header">
-        <h4 style="font-family:var(--font-family-display); font-size:16px; font-weight:800; color:white;">${name}</h4>
-        <button class="btn btn-danger btn-sm delete-agent-btn" data-name="${name}">Remove Agent</button>
-      </div>
-      <div class="form-grid">
-        <div class="form-group">
-          <label class="form-label">Description</label>
-          <input type="text" class="form-input agent-desc" data-agent="${name}" value="${cfg.description || ''}" placeholder="Role description">
+    // Render MCP Toolsets if LLM / Routing
+    let mcpHTML = "";
+    if (aType === 'llm' || aType === 'routing') {
+      const mcpList = cfg.mcp_toolsets || [];
+      const mcpRows = mcpList.map((mcp, idx) => `
+        <div class="mcp-row flex-row" style="margin-bottom:6px;" data-agent="${name}" data-idx="${idx}">
+          <input type="text" class="form-input mcp-endpoint-input" style="flex:1;" value="${mcp.endpoint || ''}" placeholder="e.g. \${MCP_SERVER_URL:-http://localhost:8082}/mcp">
+          <button class="btn btn-danger btn-sm btn-remove-mcp">✕</button>
         </div>
+      `).join('');
+      
+      mcpHTML = `
+        <div class="form-group full-width" style="border-top:1px dashed var(--border-color); padding-top:12px; margin-top:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <label class="form-label">MCP Toolsets (External Servers)</label>
+            <button class="btn btn-add-mcp" data-agent="${name}" style="padding:4px 8px; font-size:11px;">+ Add MCP Toolset</button>
+          </div>
+          <div class="mcp-container">${mcpRows || '<div style="font-size:12px; color:var(--text-muted);">No MCP endpoints configured.</div>'}</div>
+        </div>
+      `;
+    }
+    
+    // Render Routing Rules if Routing Type
+    let routingHTML = "";
+    if (aType === 'routing') {
+      const routesList = Object.entries(cfg.role_routes || {});
+      const routesRows = routesList.map(([role, target], idx) => {
+        let routeOpts = `<option value="">Select Target...</option>`;
+        Object.keys(state.agents).forEach(aName => {
+          if (aName === name) return;
+          routeOpts += `<option value="${aName}" ${target === aName ? 'selected' : ''}>${aName}</option>`;
+        });
+        return `
+          <div class="route-rule-row flex-row" style="margin-bottom:6px;" data-agent="${name}" data-idx="${idx}">
+            <input type="text" class="form-input route-key-input" style="flex:1;" value="${role}" placeholder="e.g. admin, seller, anonymous">
+            <select class="form-select route-val-select" style="flex:1;">
+              ${routeOpts}
+            </select>
+            <button class="btn btn-danger btn-sm btn-remove-route">✕</button>
+          </div>
+        `;
+      }).join('');
+      
+      routingHTML = `
+        <div class="form-group full-width" style="border-top:1px dashed var(--border-color); padding-top:12px; margin-top:8px;">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Admin User Logins (Comma-separated)</label>
+              <input type="text" class="form-input route-admins-input" data-agent="${name}" value="${(cfg.admin_users || []).join(', ')}" placeholder="e.g. admin1, admin2">
+            </div>
+            <div class="form-group full-width">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <label class="form-label">Role Routing Routes</label>
+                <button class="btn btn-add-route-rule" data-agent="${name}" style="padding:4px 8px; font-size:11px;">+ Add Routing Rule</button>
+              </div>
+              <div class="routes-container">${routesRows || '<div style="font-size:12px; color:var(--text-muted);">No role routing rules configured.</div>'}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+    
+    // Render loop max iterations if Loop type
+    let loopHTML = "";
+    if (aType === 'loop') {
+      loopHTML = `
+        <div class="form-group">
+          <label class="form-label">Max Iterations</label>
+          <input type="number" class="form-input agent-max-iter" data-agent="${name}" value="${cfg.max_iterations || 5}" min="1">
+        </div>
+      `;
+    }
+    
+    // Render WASM module path if WASM type
+    let wasmHTML = "";
+    if (aType === 'wasm') {
+      wasmHTML = `
+        <div class="form-group full-width">
+          <label class="form-label">WebAssembly Plugin Path (.wasm)</label>
+          <input type="text" class="form-input agent-wasm-path" data-agent="${name}" value="${cfg.module_path || ''}" placeholder="e.g. ./plugins/orchestrator.wasm">
+        </div>
+      `;
+    }
+    
+    // Render LLM/Routing settings (Model + Prompt)
+    let llmSettingsHTML = "";
+    if (aType === 'llm' || aType === 'routing') {
+      llmSettingsHTML = `
         <div class="form-group">
           <label class="form-label">Model Endpoint</label>
           <select class="form-select agent-model" data-agent="${name}">
@@ -497,27 +600,245 @@ function renderAgentCards() {
           </select>
         </div>
         <div class="form-group full-width">
-          <label class="form-label">Assigned Tools</label>
-          <div class="selector-chip-container">
-            ${toolsChecklist || '<div style="font-size:12px; color:var(--text-muted);">No custom tools defined yet.</div>'}
-          </div>
+          <label class="form-label">System Instructions (Prompt)</label>
+          <textarea class="form-textarea agent-instr" data-agent="${name}" rows="5" style="font-family:var(--font-family-mono); font-size:12px;">${cfg.instruction || ''}</textarea>
         </div>
+      `;
+    }
+    
+    card.innerHTML = `
+      <div class="item-card-header">
+        <div class="flex-row">
+          <h4 style="font-family:var(--font-family-display); font-size:16px; font-weight:800; color:white; margin:0;">${name}</h4>
+          <span class="item-card-badge" style="background:rgba(99,102,241,0.15); border-color:var(--accent-indigo); color:var(--text-primary); text-transform:uppercase;">${aType}</span>
+        </div>
+        <button class="btn btn-danger btn-sm delete-agent-btn" data-name="${name}">Remove Agent</button>
+      </div>
+      
+      <div class="form-grid" style="margin-top:12px;">
+        <div class="form-group">
+          <label class="form-label">Agent Class Type</label>
+          <select class="form-select agent-class-type" data-agent="${name}">
+            <option value="llm" ${aType === 'llm' ? 'selected' : ''}>Standard LLM Agent (llm)</option>
+            <option value="routing" ${aType === 'routing' ? 'selected' : ''}>Role-Based Router (routing)</option>
+            <option value="sequential" ${aType === 'sequential' ? 'selected' : ''}>Sequential Orchestrator</option>
+            <option value="parallel" ${aType === 'parallel' ? 'selected' : ''}>Parallel Orchestrator</option>
+            <option value="loop" ${aType === 'loop' ? 'selected' : ''}>Loop Orchestrator</option>
+            <option value="wasm" ${aType === 'wasm' ? 'selected' : ''}>WASM Plugin Agent (wasm)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <input type="text" class="form-input agent-desc" data-agent="${name}" value="${cfg.description || ''}" placeholder="Role description">
+        </div>
+        
+        ${loopHTML}
+        ${wasmHTML}
+        ${llmSettingsHTML}
+        
+        ${aType === 'llm' || aType === 'routing' ? `
+          <div class="form-group full-width">
+            <label class="form-label">Assigned Tools</label>
+            <div class="selector-chip-container">
+              ${toolsChecklist || '<div style="font-size:12px; color:var(--text-muted);">No custom tools defined yet.</div>'}
+            </div>
+          </div>
+        ` : ''}
+        
         <div class="form-group full-width">
           <label class="form-label">Sub-Agents (Delegates / Routing Path)</label>
           <div class="selector-chip-container">
             ${subAgentsChecklist || '<div style="font-size:12px; color:var(--text-muted);">Add other agents to enable sub-agent transfers.</div>'}
           </div>
         </div>
-        <div class="form-group full-width">
-          <label class="form-label">System Instructions (Prompt)</label>
-          <textarea class="form-textarea agent-instr" data-agent="${name}" rows="5" style="font-family:var(--font-family-mono); font-size:12px;">${cfg.instruction || ''}</textarea>
-        </div>
+        
+        ${mcpHTML}
+        ${routingHTML}
       </div>
     `;
     agentsList.appendChild(card);
   });
   
   // Bind dynamic inputs inside Agent cards
+  document.querySelectorAll('.agent-class-type').forEach(select => {
+    select.addEventListener('change', (e) => {
+      const aName = e.target.getAttribute('data-agent');
+      const val = e.target.value;
+      state.agents[aName].type = val;
+      
+      // Cleanup incompatible fields when changing type
+      if (val === 'sequential' || val === 'parallel' || val === 'loop' || val === 'wasm') {
+        delete state.agents[aName].model;
+        delete state.agents[aName].instruction;
+        delete state.agents[aName].tools;
+        delete state.agents[aName].mcp_toolsets;
+      } else {
+        const defaultMod = Object.keys(state.models)[0] || "";
+        state.agents[aName].model = defaultMod;
+        state.agents[aName].instruction = state.agents[aName].instruction || "Help the user.";
+        state.agents[aName].tools = state.agents[aName].tools || [];
+      }
+      
+      if (val === 'loop') {
+        state.agents[aName].max_iterations = 5;
+      } else {
+        delete state.agents[aName].max_iterations;
+      }
+      
+      if (val === 'wasm') {
+        state.agents[aName].module_path = "";
+      } else {
+        delete state.agents[aName].module_path;
+      }
+      
+      if (val === 'routing') {
+        state.agents[aName].admin_users = [];
+        state.agents[aName].role_routes = {};
+      } else {
+        delete state.agents[aName].admin_users;
+        delete state.agents[aName].role_routes;
+      }
+      
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      renderVisualEditor();
+      syncYAMLFromVisuals();
+      renderTopology();
+    });
+  });
+
+  document.querySelectorAll('.agent-max-iter').forEach(input => {
+    input.addEventListener('change', (e) => {
+      const aName = e.target.getAttribute('data-agent');
+      state.agents[aName].max_iterations = parseInt(e.target.value) || 5;
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      syncYAMLFromVisuals();
+    });
+  });
+
+  document.querySelectorAll('.agent-wasm-path').forEach(input => {
+    input.addEventListener('input', (e) => {
+      const aName = e.target.getAttribute('data-agent');
+      state.agents[aName].module_path = e.target.value.trim();
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      syncYAMLFromVisuals();
+    });
+  });
+
+  document.querySelectorAll('.route-admins-input').forEach(input => {
+    input.addEventListener('input', (e) => {
+      const aName = e.target.getAttribute('data-agent');
+      state.agents[aName].admin_users = e.target.value.split(',').map(s => s.trim()).filter(s => s);
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      syncYAMLFromVisuals();
+    });
+  });
+
+  // MCP triggers
+  document.querySelectorAll('.btn-add-mcp').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const aName = e.target.getAttribute('data-agent');
+      if (!state.agents[aName].mcp_toolsets) {
+        state.agents[aName].mcp_toolsets = [];
+      }
+      state.agents[aName].mcp_toolsets.push({ endpoint: "" });
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      renderVisualEditor();
+      syncYAMLFromVisuals();
+    });
+  });
+
+  document.querySelectorAll('.mcp-endpoint-input').forEach(input => {
+    input.addEventListener('input', (e) => {
+      const row = e.target.closest('.mcp-row');
+      const aName = row.getAttribute('data-agent');
+      const idx = parseInt(row.getAttribute('data-idx'));
+      state.agents[aName].mcp_toolsets[idx].endpoint = e.target.value.trim();
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      syncYAMLFromVisuals();
+    });
+  });
+
+  document.querySelectorAll('.btn-remove-mcp').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const row = e.target.closest('.mcp-row');
+      const aName = row.getAttribute('data-agent');
+      const idx = parseInt(row.getAttribute('data-idx'));
+      state.agents[aName].mcp_toolsets.splice(idx, 1);
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      renderVisualEditor();
+      syncYAMLFromVisuals();
+    });
+  });
+
+  // Routing Rules triggers
+  document.querySelectorAll('.btn-add-route-rule').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const aName = e.target.getAttribute('data-agent');
+      if (!state.agents[aName].role_routes) {
+        state.agents[aName].role_routes = {};
+      }
+      // Add empty route rule
+      state.agents[aName].role_routes[""] = "";
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      renderVisualEditor();
+      syncYAMLFromVisuals();
+    });
+  });
+
+  document.querySelectorAll('.route-key-input').forEach(input => {
+    input.addEventListener('change', (e) => {
+      const row = e.target.closest('.route-rule-row');
+      const aName = row.getAttribute('data-agent');
+      const idx = parseInt(row.getAttribute('data-idx'));
+      
+      const routesList = Object.entries(state.agents[aName].role_routes || {});
+      const oldKey = routesList[idx][0];
+      const val = routesList[idx][1];
+      const newKey = e.target.value.trim();
+      
+      if (newKey && newKey !== oldKey) {
+        delete state.agents[aName].role_routes[oldKey];
+        state.agents[aName].role_routes[newKey] = val;
+        localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+        renderVisualEditor();
+        syncYAMLFromVisuals();
+      }
+    });
+  });
+
+  document.querySelectorAll('.route-val-select').forEach(select => {
+    select.addEventListener('change', (e) => {
+      const row = e.target.closest('.route-rule-row');
+      const aName = row.getAttribute('data-agent');
+      const idx = parseInt(row.getAttribute('data-idx'));
+      
+      const routesList = Object.entries(state.agents[aName].role_routes || {});
+      const key = routesList[idx][0];
+      state.agents[aName].role_routes[key] = e.target.value;
+      
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      syncYAMLFromVisuals();
+      renderTopology();
+    });
+  });
+
+  document.querySelectorAll('.btn-remove-route').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const row = e.target.closest('.route-rule-row');
+      const aName = row.getAttribute('data-agent');
+      const idx = parseInt(row.getAttribute('data-idx'));
+      
+      const routesList = Object.entries(state.agents[aName].role_routes || {});
+      const key = routesList[idx][0];
+      delete state.agents[aName].role_routes[key];
+      
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      renderVisualEditor();
+      syncYAMLFromVisuals();
+      renderTopology();
+    });
+  });
+  
   document.querySelectorAll('.agent-desc').forEach(input => {
     input.addEventListener('input', (e) => {
       const aName = e.target.getAttribute('data-agent');
@@ -795,6 +1116,39 @@ function bindUIEvents() {
     syncYAMLFromVisuals();
   });
   
+  // Launcher flags event listeners
+  document.getElementById('flag-console-chip').addEventListener('click', () => {
+    state.console = !state.console;
+    document.getElementById('flag-console').checked = state.console;
+    document.getElementById('flag-console-chip').classList.toggle('selected', state.console);
+    localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+    syncYAMLFromVisuals();
+  });
+  
+  document.getElementById('flag-webui-chip').addEventListener('click', () => {
+    state.webui = !state.webui;
+    document.getElementById('flag-webui').checked = state.webui;
+    document.getElementById('flag-webui-chip').classList.toggle('selected', state.webui);
+    localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+    syncYAMLFromVisuals();
+  });
+  
+  document.getElementById('flag-openclaw-chip').addEventListener('click', () => {
+    state.openclaw = !state.openclaw;
+    document.getElementById('flag-openclaw').checked = state.openclaw;
+    document.getElementById('flag-openclaw-chip').classList.toggle('selected', state.openclaw);
+    localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+    syncYAMLFromVisuals();
+  });
+  
+  document.getElementById('flag-a2a-chip').addEventListener('click', () => {
+    state.a2a = !state.a2a;
+    document.getElementById('flag-a2a').checked = state.a2a;
+    document.getElementById('flag-a2a-chip').classList.toggle('selected', state.a2a);
+    localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+    syncYAMLFromVisuals();
+  });
+  
   // YAML Textarea live input sync
   let parseDebounce;
   yamlTextarea.addEventListener('input', (e) => {
@@ -821,31 +1175,97 @@ function bindUIEvents() {
   apiCustomModelGroup = document.getElementById('api-custom-model-group');
   apiCustomModelInput = document.getElementById('api-custom-model-input');
 
-  const providerModels = {
+  const providerModelsOfflineFallback = {
     gemini: [
       { value: "gemini-2.5-flash", text: "Gemini 2.5 Flash (Recommended)" },
       { value: "gemini-2.0-flash", text: "Gemini 2.0 Flash" },
-      { value: "gemini-2.5-pro", text: "Gemini 2.5 Pro" },
-      { value: "custom", text: "Custom Model ID..." }
+      { value: "gemini-2.5-pro", text: "Gemini 2.5 Pro" }
     ],
     openai: [
       { value: "gpt-4o", text: "GPT-4o (Recommended)" },
       { value: "gpt-4o-mini", text: "GPT-4o Mini" },
-      { value: "o1-mini", text: "o1-mini" },
-      { value: "custom", text: "Custom Model ID..." }
+      { value: "o1-mini", text: "o1-mini" }
     ],
     ollama: [
       { value: "llama3.2", text: "Llama 3.2 (Recommended)" },
       { value: "llama3.1", text: "Llama 3.1" },
       { value: "mistral", text: "Mistral" },
-      { value: "gemma2", text: "Gemma 2" },
-      { value: "custom", text: "Custom Model ID..." }
+      { value: "gemma2", text: "Gemma 2" }
     ]
   };
 
-  function updateBYOKModelDropdown(provider, selectedModelValue) {
+  async function updateBYOKModelDropdown(provider, selectedModelValue, forceFetch = false) {
     apiModelSelect.innerHTML = "";
-    const list = providerModels[provider] || [];
+    const loadingOpt = document.createElement('option');
+    loadingOpt.value = "";
+    loadingOpt.textContent = "Retrieving models from API...";
+    apiModelSelect.appendChild(loadingOpt);
+    apiModelSelect.disabled = true;
+    
+    const liveKey = apiKeyInput.value.trim();
+    const liveUrl = apiBaseUrlInput.value.trim();
+    
+    let list = [];
+    
+    // We only fetch from API if forceFetch is true or if we have a key (for Gemini/OpenAI) or if it's Ollama
+    if (forceFetch || provider === 'ollama' || liveKey) {
+      try {
+        if (provider === 'gemini') {
+          const endpoint = `${liveUrl || 'https://generativelanguage.googleapis.com'}/v1beta/models?key=${liveKey}`;
+          const res = await fetch(endpoint);
+          if (!res.ok) throw new Error("Gemini fetch failed");
+          const data = await res.json();
+          list = (data.models || [])
+            .filter(m => m.supportedGenerationMethods?.includes("generateContent"))
+            .map(m => {
+              const id = m.name.replace(/^models\//, "");
+              return { value: id, text: m.displayName || id };
+            });
+        } else if (provider === 'openai') {
+          const endpoint = `${liveUrl || 'https://api.openai.com/v1'}/models`;
+          const res = await fetch(endpoint, {
+            headers: { "Authorization": `Bearer ${liveKey}` }
+          });
+          if (!res.ok) throw new Error("OpenAI fetch failed");
+          const data = await res.json();
+          const filtered = (data.data || []).filter(m => m.id.includes("gpt") || m.id.includes("o1"));
+          const srcList = filtered.length > 0 ? filtered : (data.data || []);
+          list = srcList.map(m => ({ value: m.id, text: m.id }));
+        } else if (provider === 'ollama') {
+          const base = liveUrl || "http://localhost:11434/v1";
+          let success = false;
+          try {
+            const res = await fetch(`${base}/models`);
+            if (res.ok) {
+              const data = await res.json();
+              list = (data.data || []).map(m => ({ value: m.id, text: m.id }));
+              success = true;
+            }
+          } catch (e) {}
+          
+          if (!success) {
+            const host = base.replace(/\/v1\/?$/, "");
+            const res = await fetch(`${host}/api/tags`);
+            if (!res.ok) throw new Error("Ollama fetch failed");
+            const data = await res.json();
+            list = (data.models || []).map(m => ({ value: m.name, text: m.name }));
+          }
+        }
+      } catch (err) {
+        console.warn("Dynamic model fetch failed, falling back to predefined list:", err);
+        if (forceFetch) {
+          showToast(`Could not fetch models: ${err.message}. Showing offline fallback list.`, "error");
+        }
+      }
+    }
+    
+    if (list.length === 0) {
+      list = providerModelsOfflineFallback[provider] || [];
+    }
+    
+    apiModelSelect.innerHTML = "";
+    apiModelSelect.disabled = false;
+    
     list.forEach(m => {
       const opt = document.createElement('option');
       opt.value = m.value;
@@ -856,14 +1276,17 @@ function bindUIEvents() {
       apiModelSelect.appendChild(opt);
     });
     
+    const optCustom = document.createElement('option');
+    optCustom.value = "custom";
+    optCustom.textContent = "Custom Model ID...";
+    if (selectedModelValue === 'custom') {
+      optCustom.selected = true;
+    }
+    apiModelSelect.appendChild(optCustom);
+    
     const predefinedValues = list.map(m => m.value);
-    if (selectedModelValue && !predefinedValues.includes(selectedModelValue)) {
-      const opt = document.createElement('option');
-      opt.value = "custom";
-      opt.textContent = "Custom Model ID...";
-      opt.selected = true;
-      apiModelSelect.appendChild(opt);
-      
+    if (selectedModelValue && !predefinedValues.includes(selectedModelValue) && selectedModelValue !== 'custom') {
+      optCustom.selected = true;
       apiCustomModelGroup.classList.remove('hidden');
       apiCustomModelInput.value = selectedModelValue;
     } else if (selectedModelValue === 'custom') {
@@ -873,20 +1296,30 @@ function bindUIEvents() {
     }
   }
 
+  const defaultProviderUrls = {
+    gemini: "https://generativelanguage.googleapis.com",
+    openai: "https://api.openai.com/v1",
+    ollama: "http://localhost:11434/v1"
+  };
+
   function adjustBYOKFieldVisibilities(provider) {
+    const currentValue = apiBaseUrlInput.value.trim();
+    const isDefaultUrlOfAnyProvider = Object.values(defaultProviderUrls).includes(currentValue) || currentValue === "";
+    
+    if (isDefaultUrlOfAnyProvider) {
+      apiBaseUrlInput.value = defaultProviderUrls[provider];
+    }
+    
     if (provider === 'gemini') {
       apiBaseUrlInput.placeholder = "e.g. https://generativelanguage.googleapis.com";
-      apiBaseUrlInput.value = apiBaseUrl || "";
       apiKeyInput.placeholder = "Enter Gemini API Key...";
       apiKeyGroup.classList.remove('hidden');
     } else if (provider === 'openai') {
       apiBaseUrlInput.placeholder = "e.g. https://api.openai.com/v1";
-      apiBaseUrlInput.value = apiBaseUrl || "";
       apiKeyInput.placeholder = "Enter OpenAI API Key...";
       apiKeyGroup.classList.remove('hidden');
     } else if (provider === 'ollama') {
       apiBaseUrlInput.placeholder = "e.g. http://localhost:11434/v1";
-      apiBaseUrlInput.value = apiBaseUrl || "http://localhost:11434/v1";
       apiKeyInput.placeholder = "Optional password/key...";
       apiKeyGroup.classList.remove('hidden');
     }
@@ -896,10 +1329,10 @@ function bindUIEvents() {
   document.getElementById('btn-key-mgr').addEventListener('click', () => {
     apiProviderSelect.value = apiProvider;
     apiKeyInput.value = apiKey;
-    apiBaseUrlInput.value = apiBaseUrl;
+    apiBaseUrlInput.value = apiBaseUrl || defaultProviderUrls[apiProvider];
     
     adjustBYOKFieldVisibilities(apiProvider);
-    updateBYOKModelDropdown(apiProvider, apiModel);
+    updateBYOKModelDropdown(apiProvider, apiModel, false);
     
     keyModal.classList.add('active');
   });
@@ -907,8 +1340,12 @@ function bindUIEvents() {
   apiProviderSelect.addEventListener('change', (e) => {
     const prov = e.target.value;
     adjustBYOKFieldVisibilities(prov);
-    const defaultMod = providerModels[prov]?.[0]?.value || "";
-    updateBYOKModelDropdown(prov, defaultMod);
+    const defaultMod = providerModelsOfflineFallback[prov]?.[0]?.value || "";
+    updateBYOKModelDropdown(prov, defaultMod, false);
+  });
+
+  document.getElementById('btn-fetch-api-models').addEventListener('click', () => {
+    updateBYOKModelDropdown(apiProviderSelect.value, apiModelSelect.value, true);
   });
 
   apiModelSelect.addEventListener('change', (e) => {
@@ -1051,9 +1488,47 @@ function bindUIEvents() {
     }
   });
   
+  // Tool parameters rows builder
+  function addToolParamRow(pName = "", pType = "string", pReq = false) {
+    const list = document.getElementById('tool-params-list');
+    const row = document.createElement('div');
+    row.className = "tool-param-row";
+    row.style.display = "grid";
+    row.style.gridTemplateColumns = "2fr 1fr auto auto";
+    row.style.gap = "8px";
+    row.style.alignItems = "center";
+    row.style.marginBottom = "6px";
+    
+    row.innerHTML = `
+      <input type="text" class="form-input param-name" value="${pName}" placeholder="parameter_name" style="padding:6px 10px;">
+      <select class="form-select param-type" style="padding:6px 10px;">
+        <option value="string" ${pType === 'string' ? 'selected' : ''}>string</option>
+        <option value="number" ${pType === 'number' ? 'selected' : ''}>number</option>
+        <option value="boolean" ${pType === 'boolean' ? 'selected' : ''}>boolean</option>
+        <option value="array" ${pType === 'array' ? 'selected' : ''}>array</option>
+        <option value="object" ${pType === 'object' ? 'selected' : ''}>object</option>
+      </select>
+      <label style="display:flex; align-items:center; gap:4px; font-size:11px; margin:0; cursor:pointer;">
+        <input type="checkbox" class="param-req" ${pReq ? 'checked' : ''}> Req
+      </label>
+      <button type="button" class="btn btn-danger btn-remove-param" style="padding:6px 10px; min-width:32px; display:flex; align-items:center; justify-content:center;">✕</button>
+    `;
+    
+    row.querySelector('.btn-remove-param').addEventListener('click', () => {
+      row.remove();
+    });
+    
+    list.appendChild(row);
+  }
+
+  document.getElementById('btn-add-tool-param').addEventListener('click', () => {
+    addToolParamRow("", "string", false);
+  });
+
   document.getElementById('btn-add-tool').addEventListener('click', () => {
     document.getElementById('t-name').value = "";
     document.getElementById('t-desc').value = "";
+    document.getElementById('tool-params-list').innerHTML = "";
     toolModalType.value = "gemini";
     toolFields.innerHTML = `
       <div class="form-group">
@@ -1092,6 +1567,24 @@ function bindUIEvents() {
         driver: document.getElementById('t-db-driver').value.trim() || 'postgres',
         dsn: document.getElementById('t-db-dsn').value.trim() || ''
       };
+    }
+    
+    // Parse dynamic parameters list
+    tCfg.parameters = {};
+    document.querySelectorAll('.tool-param-row').forEach(row => {
+      const pName = row.querySelector('.param-name').value.trim();
+      const pType = row.querySelector('.param-type').value;
+      const pReq = row.querySelector('.param-req').checked;
+      if (pName) {
+        tCfg.parameters[pName] = {
+          type: pType,
+          required: pReq
+        };
+      }
+    });
+    
+    if (Object.keys(tCfg.parameters).length === 0) {
+      delete tCfg.parameters;
     }
     
     state.tools[name] = tCfg;

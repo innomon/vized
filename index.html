@@ -200,6 +200,23 @@
                     </div>
                   </div>
                 </div>
+                <div class="form-group full-width" style="border-top: 1px solid var(--border-color); padding-top: 16px; margin-top: 8px;">
+                  <label class="form-label">Framework Launcher Flags</label>
+                  <div class="selector-chip-container" style="margin-top:4px;">
+                    <div class="selector-chip" id="flag-console-chip">
+                      <input type="checkbox" id="flag-console" style="display:none;"> Console Launcher (`-console`)
+                    </div>
+                    <div class="selector-chip" id="flag-webui-chip">
+                      <input type="checkbox" id="flag-webui" style="display:none;"> Web UI Mode (`-webui`)
+                    </div>
+                    <div class="selector-chip" id="flag-openclaw-chip">
+                      <input type="checkbox" id="flag-openclaw" style="display:none;"> OpenClaw Gateway (`-openclaw`)
+                    </div>
+                    <div class="selector-chip" id="flag-a2a-chip">
+                      <input type="checkbox" id="flag-a2a" style="display:none;"> A2A Launcher (`-a2a`)
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -335,7 +352,12 @@
           </div>
           <div class="form-group">
             <label class="form-label" for="api-model-select">Select Model</label>
-            <select id="api-model-select" class="form-select"></select>
+            <div class="flex-row">
+              <select id="api-model-select" class="form-select" style="flex:1;"></select>
+              <button type="button" id="btn-fetch-api-models" class="btn btn-icon" title="Fetch models from API" style="height:38px; width:38px; padding:0;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              </button>
+            </div>
           </div>
           <div class="form-group hidden" id="api-custom-model-group">
             <label class="form-label" for="api-custom-model-input">Custom Model Name</label>
@@ -432,6 +454,17 @@
           
           <div id="tool-type-fields" style="display:flex; flex-direction:column; gap:12px; margin-top:8px;">
             <!-- Dynamic fields shown via JS based on type selection -->
+          </div>
+          
+          <!-- Tool parameters dynamic builder -->
+          <div style="border-top:1px solid var(--border-color); margin-top:16px; padding-top:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <label class="form-label" style="margin:0;">Tool Schema Parameters</label>
+              <button type="button" id="btn-add-tool-param" class="btn" style="padding:4px 8px; font-size:11px;">+ Add Parameter</button>
+            </div>
+            <div id="tool-params-list" style="display:flex; flex-direction:column; gap:8px;">
+              <!-- Dynamic parameter rows -->
+            </div>
           </div>
         </div>
         <div class="modal-footer">
