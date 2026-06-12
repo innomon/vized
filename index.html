@@ -255,6 +255,42 @@
               </div>
             </div>
 
+            <!-- VM Sandboxes Registry -->
+            <div class="section-card">
+              <div class="section-header">
+                <h3>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+                  VM Sandboxes Registry
+                </h3>
+                <button id="btn-add-sandbox" class="btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  Add Sandbox
+                </button>
+              </div>
+              <p class="section-description">Define secure execution sandboxes (e.g. QuickJS, Starlark) with resource limits, tool/network permissions, and environment variables.</p>
+              <div id="sandboxes-list" class="card-grid">
+                <!-- Injected dynamically -->
+              </div>
+            </div>
+
+            <!-- Plugins Registry -->
+            <div class="section-card">
+              <div class="section-header">
+                <h3>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+                  Plugins Registry
+                </h3>
+                <button id="btn-add-plugin" class="btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  Add Plugin
+                </button>
+              </div>
+              <p class="section-description">Register ADK lifecycle plugins (e.g. logging, retry_and_reflect, wasm) to intercept user messages, tool calls, and model invocations.</p>
+              <div id="plugins-list" class="card-grid">
+                <!-- Injected dynamically -->
+              </div>
+            </div>
+
             <!-- Agents Deck -->
             <div class="section-card">
               <div class="section-header">
@@ -517,6 +553,106 @@
     </div>
 
   </div>
+
+    <!-- MODAL 6: Add Sandbox Modal -->
+    <div id="sandbox-modal" class="modal-overlay">
+      <div class="modal-content" style="max-width:550px;">
+        <div class="modal-header">
+          <h3 id="sandbox-modal-title">Add VM Sandbox</h3>
+          <button class="btn btn-icon btn-close-modal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Sandbox Name (key)</label>
+              <input type="text" id="s-name" class="form-input" placeholder="my_js_sandbox">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Engine Type</label>
+              <select id="s-type" class="form-select">
+                <option value="quickjs">QuickJS (JavaScript)</option>
+                <option value="starlark">Starlark (Python-like)</option>
+                <option value="gnovm">GnoVM (Go-like)</option>
+                <option value="prolog">Prolog (Logic)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Memory Limit (MB)</label>
+              <input type="number" id="s-memory" class="form-input" placeholder="128" value="128">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Execution Timeout</label>
+              <input type="text" id="s-timeout" class="form-input" placeholder="5s" value="5s">
+            </div>
+            <div class="form-group full-width">
+              <label class="form-label">Allowed Network Domains (Comma-separated)</label>
+              <input type="text" id="s-net" class="form-input" placeholder="e.g. *.google.com, api.github.com">
+            </div>
+          </div>
+          
+          <!-- Sandbox allowed tools checklist -->
+          <div style="border-top:1px solid var(--border-color); margin-top:12px; padding-top:12px;">
+            <label class="form-label">Allow Access to Registered Tools</label>
+            <div id="sandbox-tools-list" class="selector-chip-container" style="margin-top:4px;">
+              <!-- Dynamic tool chips -->
+            </div>
+          </div>
+          
+          <!-- Sandbox environment variables dynamic builder -->
+          <div style="border-top:1px solid var(--border-color); margin-top:12px; padding-top:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <label class="form-label" style="margin:0;">Environment Variables (Env)</label>
+              <button type="button" id="btn-add-sandbox-env" class="btn" style="padding:4px 8px; font-size:11px;">+ Add Env</button>
+            </div>
+            <div id="sandbox-env-list" style="display:flex; flex-direction:column; gap:8px;">
+              <!-- Dynamic env rows -->
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-close-modal">Cancel</button>
+          <button id="btn-submit-sandbox" class="btn btn-primary">Save Sandbox</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL 7: Add Plugin Modal -->
+    <div id="plugin-modal" class="modal-overlay">
+      <div class="modal-content" style="max-width:550px;">
+        <div class="modal-header">
+          <h3 id="plugin-modal-title">Add Lifecycle Plugin</h3>
+          <button class="btn btn-icon btn-close-modal">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Plugin Name</label>
+              <input type="text" id="p-name" class="form-input" placeholder="my-logger">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Plugin Type</label>
+              <select id="p-type" class="form-select">
+                <option value="logging">Logging Plugin</option>
+                <option value="retry_and_reflect">Retry & Reflect Plugin</option>
+                <option value="wasm">WebAssembly (WASM) Plugin</option>
+              </select>
+            </div>
+          </div>
+          
+          <div id="plugin-type-fields" style="display:flex; flex-direction:column; gap:12px; margin-top:12px;">
+            <!-- Dynamic fields shown via JS based on type selection -->
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-close-modal">Cancel</button>
+          <button id="btn-submit-plugin" class="btn btn-primary">Save Plugin</button>
+        </div>
+      </div>
+    </div>
 
   <!-- Main JavaScript -->
   <script src="app.js"></script>

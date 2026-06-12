@@ -52,6 +52,8 @@ const defaultState = {
       description: "Search the web using Google Search API"
     }
   },
+  sandboxes: {},
+  plugins: [],
   agents: {
     "RootAgent": {
       description: "General-purpose assistant that routes to specialized sub-agents",
@@ -256,9 +258,24 @@ function syncYAMLFromVisuals() {
     if (state.tools && Object.keys(state.tools).length > 0) {
       out.tools = state.tools;
     }
+
+    if (state.sandboxes && Object.keys(state.sandboxes).length > 0) {
+      out.sandboxes = state.sandboxes;
+    }
+
+    if (state.plugins && state.plugins.length > 0) {
+      out.plugins = state.plugins;
+    }
     
     if (state.agents && Object.keys(state.agents).length > 0) {
-      out.agents = state.agents;
+      out.agents = {};
+      Object.entries(state.agents).forEach(([name, agentCfg]) => {
+        const copy = JSON.parse(JSON.stringify(agentCfg));
+        if (copy.type === 'workflow') {
+          delete copy.sub_agents;
+        }
+        out.agents[name] = copy;
+      });
     }
     
     const yamlText = jsyaml.dump(out, { indent: 2, lineWidth: -1, noRefs: true });
@@ -292,8 +309,23 @@ function syncVisualsFromYAML(yamlText) {
       memory: parsed.memory || { provider: "" },
       auth: parsed.auth || { jwt: { public_key_path: "", issuer: "", audience: "" } },
       tools: parsed.tools || {},
+      sandboxes: parsed.sandboxes || {},
+      plugins: parsed.plugins || [],
       agents: parsed.agents || {}
     };
+
+    // Calculate sub_agents for workflows internally so topology works
+    Object.values(newState.agents).forEach(agent => {
+      if (agent.type === 'workflow') {
+        const subs = new Set();
+        if (agent.nodes) {
+          agent.nodes.forEach(n => {
+            if (n.agent) subs.add(n.agent);
+          });
+        }
+        agent.sub_agents = Array.from(subs);
+      }
+    });
     
     state = newState;
     
@@ -363,6 +395,12 @@ function renderVisualEditor() {
   
   // Agent Cards
   renderAgentCards();
+  
+  // Sandbox Cards
+  renderSandboxCards();
+  
+  // Plugin Cards
+  renderPluginCards();
 }
 
 function renderRootAgentSelector() {
@@ -434,10 +472,14 @@ function renderToolCards() {
         <span class="item-card-badge">${cfg.type.toUpperCase()}</span>
       </div>
       <div style="font-size: 12px; color: var(--text-secondary); display:flex; flex-direction:column; gap:4px;">
-        <div style="font-style: italic; line-height: 1.4;">${cfg.description || 'No description provided.'}</div>
+        <div style="font-style: italic; line-height: 1.4; margin-bottom: 4px;">${cfg.description || 'No description provided.'}</div>
         ${cfg.tool ? `<div><strong>Builtin:</strong> ${cfg.tool}</div>` : ''}
         ${cfg.module_path ? `<div><strong>Wasm Module:</strong> ${cfg.module_path}</div>` : ''}
         ${cfg.kb_path ? `<div><strong>Prolog KB:</strong> ${cfg.kb_path}</div>` : ''}
+        ${cfg.sandbox ? `<div><strong>Sandbox:</strong> ${cfg.sandbox}</div>` : ''}
+        ${cfg.op ? `<div><strong>UserDB Op:</strong> ${cfg.op}</div>` : ''}
+        ${cfg.db && cfg.db.driver ? `<div><strong>DB:</strong> ${cfg.db.driver} (${cfg.db.dsn ? 'configured' : 'no DSN'})</div>` : ''}
+        ${cfg.admin_users && cfg.admin_users.length > 0 ? `<div><strong>Admins:</strong> ${cfg.admin_users.join(', ')}</div>` : ''}
       </div>
       <div class="item-card-actions">
         <button class="btn btn-danger btn-sm delete-tool-btn" data-name="${name}">Remove</button>
@@ -459,7 +501,94 @@ function renderToolCards() {
       saveStateToProfile(activeProfile);
       renderVisualEditor();
       syncYAMLFromVisuals();
-      renderTopology();
+    });
+  });
+}
+
+function renderSandboxCards() {
+  const sandboxesList = document.getElementById('sandboxes-list');
+  if (!sandboxesList) return;
+  sandboxesList.innerHTML = "";
+  
+  Object.entries(state.sandboxes || {}).forEach(([name, cfg]) => {
+    const card = document.createElement('div');
+    card.className = `item-card`;
+    card.innerHTML = `
+      <div class="item-card-header">
+        <span class="item-card-title">${name}</span>
+        <span class="item-card-badge">${(cfg.type || 'quickjs').toUpperCase()}</span>
+      </div>
+      <div style="font-size: 12px; color: var(--text-secondary); display:flex; flex-direction:column; gap:4px;">
+        <div><strong>Timeout:</strong> ${cfg.timeout || '5s'}</div>
+        <div><strong>Memory:</strong> ${cfg.memory_limit_mb || 128} MB</div>
+        ${cfg.allow_net && cfg.allow_net.length > 0 ? `<div><strong>Net:</strong> ${cfg.allow_net.join(', ')}</div>` : ''}
+        ${cfg.allow_tools && cfg.allow_tools.length > 0 ? `<div><strong>Tools:</strong> ${cfg.allow_tools.join(', ')}</div>` : ''}
+        ${cfg.env && Object.keys(cfg.env).length > 0 ? `<div><strong>Env:</strong> ${Object.keys(cfg.env).length} variables</div>` : ''}
+      </div>
+      <div class="item-card-actions">
+        <button class="btn btn-danger btn-sm delete-sandbox-btn" data-name="${name}">Remove</button>
+      </div>
+    `;
+    sandboxesList.appendChild(card);
+  });
+  
+  document.querySelectorAll('.delete-sandbox-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const name = e.target.getAttribute('data-name');
+      delete state.sandboxes[name];
+      
+      // Update tools referencing this sandbox
+      Object.values(state.tools).forEach(tool => {
+        if (tool.type === 'sandbox' && tool.sandbox === name) {
+          tool.sandbox = "";
+        }
+      });
+      
+      saveStateToProfile(activeProfile);
+      renderVisualEditor();
+      syncYAMLFromVisuals();
+    });
+  });
+}
+
+function renderPluginCards() {
+  const pluginsList = document.getElementById('plugins-list');
+  if (!pluginsList) return;
+  pluginsList.innerHTML = "";
+  
+  (state.plugins || []).forEach((plugin, idx) => {
+    const card = document.createElement('div');
+    card.className = `item-card`;
+    card.innerHTML = `
+      <div class="item-card-header">
+        <span class="item-card-title">${plugin.name || 'unnamed'}</span>
+        <span class="item-card-badge">${(plugin.type || 'logging').toUpperCase()}</span>
+      </div>
+      <div style="font-size: 12px; color: var(--text-secondary); display:flex; flex-direction:column; gap:4px;">
+        ${plugin.type === 'retry_and_reflect' ? `
+          <div><strong>Max Retries:</strong> ${plugin.max_retries || 3}</div>
+          <div><strong>Scope:</strong> ${plugin.scope || 'invocation'}</div>
+          <div><strong>Error if exceeded:</strong> ${!!plugin.error_if_retry_exceeded}</div>
+        ` : ''}
+        ${plugin.type === 'wasm' ? `
+          <div><strong>Module Path:</strong> ${plugin.module_path || ''}</div>
+          ${plugin.config && Object.keys(plugin.config).length > 0 ? `<div><strong>Config:</strong> ${Object.keys(plugin.config).length} params</div>` : ''}
+        ` : ''}
+      </div>
+      <div class="item-card-actions">
+        <button class="btn btn-danger btn-sm delete-plugin-btn" data-idx="${idx}">Remove</button>
+      </div>
+    `;
+    pluginsList.appendChild(card);
+  });
+  
+  document.querySelectorAll('.delete-plugin-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const idx = parseInt(e.target.getAttribute('data-idx'));
+      state.plugins.splice(idx, 1);
+      saveStateToProfile(activeProfile);
+      renderVisualEditor();
+      syncYAMLFromVisuals();
     });
   });
 }
@@ -541,7 +670,7 @@ function renderAgentCards() {
           <div class="route-rule-row flex-row" style="margin-bottom:6px;" data-agent="${name}" data-idx="${idx}">
             <input type="text" class="form-input route-key-input" style="flex:1;" value="${role}" placeholder="e.g. admin, seller, anonymous">
             <select class="form-select route-val-select" style="flex:1;">
-              ${routeOpts}
+               ${routeOpts}
             </select>
             <button class="btn btn-danger btn-sm btn-remove-route">✕</button>
           </div>
@@ -605,6 +734,108 @@ function renderAgentCards() {
         </div>
       `;
     }
+
+    // Render Workflow Nodes and Edges builders if Workflow type
+    let workflowHTML = "";
+    if (aType === 'workflow') {
+      const nodeList = cfg.nodes || [];
+      const nodeRows = nodeList.map((node, idx) => {
+        let targetOpts = `<option value="">Select Target...</option>`;
+        targetOpts += `<optgroup label="Agents">`;
+        Object.keys(state.agents).forEach(aName => {
+          if (aName === name) return;
+          targetOpts += `<option value="agent:${aName}" ${node.agent === aName ? 'selected' : ''}>Agent: ${aName}</option>`;
+        });
+        targetOpts += `</optgroup>`;
+        targetOpts += `<optgroup label="Tools">`;
+        Object.keys(state.tools).forEach(tName => {
+          targetOpts += `<option value="tool:${tName}" ${node.tool === tName ? 'selected' : ''}>Tool: ${tName}</option>`;
+        });
+        targetOpts += `</optgroup>`;
+
+        return `
+          <div class="workflow-node-row flex-row" style="margin-bottom:6px; gap:8px;" data-agent="${name}" data-idx="${idx}">
+            <input type="text" class="form-input node-name-input" style="flex:1;" value="${node.name || ''}" placeholder="Node Name (e.g. router)">
+            <select class="form-select node-target-select" style="flex:1.5;">
+              ${targetOpts}
+            </select>
+            <button class="btn btn-danger btn-sm btn-remove-wf-node">✕</button>
+          </div>
+        `;
+      }).join('');
+
+      const edgeList = cfg.edges || [];
+      const edgeRows = edgeList.map((edge, idx) => {
+        let fromOpts = `<option value="START" ${edge.from === 'START' || edge.from === 'start' ? 'selected' : ''}>START</option>`;
+        nodeList.forEach(n => {
+          if (n.name) {
+            fromOpts += `<option value="${n.name}" ${edge.from === n.name ? 'selected' : ''}>${n.name}</option>`;
+          }
+        });
+
+        let toOpts = `<option value="">Select Target Node...</option>`;
+        nodeList.forEach(n => {
+          if (n.name) {
+            toOpts += `<option value="${n.name}" ${edge.to === n.name ? 'selected' : ''}>${n.name}</option>`;
+          }
+        });
+
+        return `
+          <div class="workflow-edge-row flex-row" style="margin-bottom:6px; gap:8px;" data-agent="${name}" data-idx="${idx}">
+            <select class="form-select edge-from-select" style="flex:1.2;">
+              ${fromOpts}
+            </select>
+            <span style="color:var(--text-muted); font-size:12px; align-self:center;">➜</span>
+            <select class="form-select edge-to-select" style="flex:1.2;">
+              ${toOpts}
+            </select>
+            <input type="text" class="form-input edge-route-input" style="flex:1;" value="${edge.route || ''}" placeholder="DEFAULT">
+            <button class="btn btn-danger btn-sm btn-remove-wf-edge">✕</button>
+          </div>
+        `;
+      }).join('');
+
+      workflowHTML = `
+        <div class="form-group full-width" style="border-top:1px dashed var(--border-color); padding-top:12px; margin-top:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <label class="form-label">Workflow DAG Nodes</label>
+            <button class="btn btn-add-wf-node" data-agent="${name}" style="padding:4px 8px; font-size:11px;">+ Add Node</button>
+          </div>
+          <div class="workflow-nodes-container">${nodeRows || '<div style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">No nodes configured. Add nodes first.</div>'}</div>
+        </div>
+        
+        <div class="form-group full-width" style="border-top:1px dashed var(--border-color); padding-top:12px; margin-top:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <label class="form-label">Workflow Routing Edges</label>
+            <button class="btn btn-add-wf-edge" data-agent="${name}" style="padding:4px 8px; font-size:11px;">+ Add Edge</button>
+          </div>
+          <div class="workflow-edges-container">${edgeRows || '<div style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">No edges configured.</div>'}</div>
+        </div>
+      `;
+    }
+
+    // Render WASM params if WASM agent
+    let wasmParamsHTML = "";
+    if (aType === 'wasm') {
+      const paramsList = Object.entries(cfg.params || {});
+      const paramRows = paramsList.map(([key, val], idx) => `
+        <div class="wasm-param-row flex-row" style="margin-bottom:6px;" data-agent="${name}" data-idx="${idx}">
+          <input type="text" class="form-input wasm-param-key" style="flex:1;" value="${key}" placeholder="Param Key">
+          <input type="text" class="form-input wasm-param-val" style="flex:1;" value="${val}" placeholder="Value">
+          <button class="btn btn-danger btn-sm btn-remove-wasm-param">✕</button>
+        </div>
+      `).join('');
+
+      wasmParamsHTML = `
+        <div class="form-group full-width" style="border-top:1px dashed var(--border-color); padding-top:12px; margin-top:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <label class="form-label">WASM Custom Configuration Parameters (params)</label>
+            <button class="btn btn-add-wasm-param" data-agent="${name}" style="padding:4px 8px; font-size:11px;">+ Add Parameter</button>
+          </div>
+          <div class="wasm-params-container">${paramRows || '<div style="font-size:12px; color:var(--text-muted);">No custom params configured.</div>'}</div>
+        </div>
+      `;
+    }
     
     card.innerHTML = `
       <div class="item-card-header">
@@ -625,6 +856,8 @@ function renderAgentCards() {
             <option value="parallel" ${aType === 'parallel' ? 'selected' : ''}>Parallel Orchestrator</option>
             <option value="loop" ${aType === 'loop' ? 'selected' : ''}>Loop Orchestrator</option>
             <option value="wasm" ${aType === 'wasm' ? 'selected' : ''}>WASM Plugin Agent (wasm)</option>
+            <option value="workflow" ${aType === 'workflow' ? 'selected' : ''}>Workflow DAG Agent (workflow)</option>
+            <option value="route_generator" ${aType === 'route_generator' ? 'selected' : ''}>Route Generator (route_generator)</option>
           </select>
         </div>
         <div class="form-group">
@@ -645,15 +878,19 @@ function renderAgentCards() {
           </div>
         ` : ''}
         
+        ${aType !== 'workflow' && aType !== 'route_generator' ? `
         <div class="form-group full-width">
           <label class="form-label">Sub-Agents (Delegates / Routing Path)</label>
           <div class="selector-chip-container">
             ${subAgentsChecklist || '<div style="font-size:12px; color:var(--text-muted);">Add other agents to enable sub-agent transfers.</div>'}
           </div>
         </div>
+        ` : ''}
         
         ${mcpHTML}
         ${routingHTML}
+        ${workflowHTML}
+        ${wasmParamsHTML}
       </div>
     `;
     agentsList.appendChild(card);
@@ -667,7 +904,7 @@ function renderAgentCards() {
       state.agents[aName].type = val;
       
       // Cleanup incompatible fields when changing type
-      if (val === 'sequential' || val === 'parallel' || val === 'loop' || val === 'wasm') {
+      if (val === 'sequential' || val === 'parallel' || val === 'loop' || val === 'wasm' || val === 'workflow' || val === 'route_generator') {
         delete state.agents[aName].model;
         delete state.agents[aName].instruction;
         delete state.agents[aName].tools;
@@ -687,8 +924,10 @@ function renderAgentCards() {
       
       if (val === 'wasm') {
         state.agents[aName].module_path = "";
+        state.agents[aName].params = {};
       } else {
         delete state.agents[aName].module_path;
+        delete state.agents[aName].params;
       }
       
       if (val === 'routing') {
@@ -697,6 +936,20 @@ function renderAgentCards() {
       } else {
         delete state.agents[aName].admin_users;
         delete state.agents[aName].role_routes;
+      }
+
+      if (val === 'workflow') {
+        state.agents[aName].nodes = [];
+        state.agents[aName].edges = [];
+        state.agents[aName].sub_agents = [];
+      } else {
+        delete state.agents[aName].nodes;
+        delete state.agents[aName].edges;
+        if (val === 'route_generator') {
+          delete state.agents[aName].sub_agents;
+        } else if (val !== 'llm' && val !== 'routing' && val !== 'sequential' && val !== 'parallel' && val !== 'loop') {
+          delete state.agents[aName].sub_agents;
+        }
       }
       
       localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
@@ -931,6 +1184,210 @@ function renderAgentCards() {
       renderVisualEditor();
       syncYAMLFromVisuals();
       renderTopology();
+    });
+  });
+
+  // Workflow nodes builders
+  document.querySelectorAll('.btn-add-wf-node').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const aName = e.target.getAttribute('data-agent');
+      if (!state.agents[aName].nodes) {
+        state.agents[aName].nodes = [];
+      }
+      state.agents[aName].nodes.push({ name: "", agent: "", tool: "" });
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      renderVisualEditor();
+      syncYAMLFromVisuals();
+    });
+  });
+
+  document.querySelectorAll('.node-name-input').forEach(input => {
+    input.addEventListener('input', (e) => {
+      const row = e.target.closest('.workflow-node-row');
+      const aName = row.getAttribute('data-agent');
+      const idx = parseInt(row.getAttribute('data-idx'));
+      state.agents[aName].nodes[idx].name = e.target.value.trim();
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      syncYAMLFromVisuals();
+    });
+  });
+
+  document.querySelectorAll('.node-target-select').forEach(select => {
+    select.addEventListener('change', (e) => {
+      const row = e.target.closest('.workflow-node-row');
+      const aName = row.getAttribute('data-agent');
+      const idx = parseInt(row.getAttribute('data-idx'));
+      const val = e.target.value;
+      
+      if (val.startsWith('agent:')) {
+        state.agents[aName].nodes[idx].agent = val.substring(6);
+        delete state.agents[aName].nodes[idx].tool;
+      } else if (val.startsWith('tool:')) {
+        state.agents[aName].nodes[idx].tool = val.substring(5);
+        delete state.agents[aName].nodes[idx].agent;
+      } else {
+        delete state.agents[aName].nodes[idx].agent;
+        delete state.agents[aName].nodes[idx].tool;
+      }
+      
+      // Update sub_agents internally
+      const subs = new Set();
+      state.agents[aName].nodes.forEach(n => {
+        if (n.agent) subs.add(n.agent);
+      });
+      state.agents[aName].sub_agents = Array.from(subs);
+      
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      renderVisualEditor();
+      syncYAMLFromVisuals();
+      renderTopology();
+    });
+  });
+
+  document.querySelectorAll('.btn-remove-wf-node').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const row = e.target.closest('.workflow-node-row');
+      const aName = row.getAttribute('data-agent');
+      const idx = parseInt(row.getAttribute('data-idx'));
+      
+      state.agents[aName].nodes.splice(idx, 1);
+      
+      // Update sub_agents internally
+      const subs = new Set();
+      state.agents[aName].nodes.forEach(n => {
+        if (n.agent) subs.add(n.agent);
+      });
+      state.agents[aName].sub_agents = Array.from(subs);
+      
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      renderVisualEditor();
+      syncYAMLFromVisuals();
+      renderTopology();
+    });
+  });
+
+  // Workflow edges builders
+  document.querySelectorAll('.btn-add-wf-edge').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const aName = e.target.getAttribute('data-agent');
+      if (!state.agents[aName].edges) {
+        state.agents[aName].edges = [];
+      }
+      state.agents[aName].edges.push({ from: "START", to: "", route: "" });
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      renderVisualEditor();
+      syncYAMLFromVisuals();
+    });
+  });
+
+  document.querySelectorAll('.edge-from-select').forEach(select => {
+    select.addEventListener('change', (e) => {
+      const row = e.target.closest('.workflow-edge-row');
+      const aName = row.getAttribute('data-agent');
+      const idx = parseInt(row.getAttribute('data-idx'));
+      state.agents[aName].edges[idx].from = e.target.value;
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      syncYAMLFromVisuals();
+    });
+  });
+
+  document.querySelectorAll('.edge-to-select').forEach(select => {
+    select.addEventListener('change', (e) => {
+      const row = e.target.closest('.workflow-edge-row');
+      const aName = row.getAttribute('data-agent');
+      const idx = parseInt(row.getAttribute('data-idx'));
+      state.agents[aName].edges[idx].to = e.target.value;
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      syncYAMLFromVisuals();
+    });
+  });
+
+  document.querySelectorAll('.edge-route-input').forEach(input => {
+    input.addEventListener('input', (e) => {
+      const row = e.target.closest('.workflow-edge-row');
+      const aName = row.getAttribute('data-agent');
+      const idx = parseInt(row.getAttribute('data-idx'));
+      state.agents[aName].edges[idx].route = e.target.value.trim();
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      syncYAMLFromVisuals();
+    });
+  });
+
+  document.querySelectorAll('.btn-remove-wf-edge').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const row = e.target.closest('.workflow-edge-row');
+      const aName = row.getAttribute('data-agent');
+      const idx = parseInt(row.getAttribute('data-idx'));
+      
+      state.agents[aName].edges.splice(idx, 1);
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      renderVisualEditor();
+      syncYAMLFromVisuals();
+    });
+  });
+
+  // WASM params builders
+  document.querySelectorAll('.btn-add-wasm-param').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const aName = e.target.getAttribute('data-agent');
+      if (!state.agents[aName].params) {
+        state.agents[aName].params = {};
+      }
+      state.agents[aName].params[""] = "";
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      renderVisualEditor();
+      syncYAMLFromVisuals();
+    });
+  });
+
+  document.querySelectorAll('.wasm-param-key').forEach(input => {
+    input.addEventListener('change', (e) => {
+      const row = e.target.closest('.wasm-param-row');
+      const aName = row.getAttribute('data-agent');
+      const idx = parseInt(row.getAttribute('data-idx'));
+      
+      const paramsList = Object.entries(state.agents[aName].params || {});
+      const oldKey = paramsList[idx][0];
+      const val = paramsList[idx][1];
+      const newKey = e.target.value.trim();
+      
+      if (newKey && newKey !== oldKey) {
+        delete state.agents[aName].params[oldKey];
+        state.agents[aName].params[newKey] = val;
+        localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+        renderVisualEditor();
+        syncYAMLFromVisuals();
+      }
+    });
+  });
+
+  document.querySelectorAll('.wasm-param-val').forEach(input => {
+    input.addEventListener('input', (e) => {
+      const row = e.target.closest('.wasm-param-row');
+      const aName = row.getAttribute('data-agent');
+      const idx = parseInt(row.getAttribute('data-idx'));
+      
+      const paramsList = Object.entries(state.agents[aName].params || {});
+      const key = paramsList[idx][0];
+      state.agents[aName].params[key] = e.target.value;
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      syncYAMLFromVisuals();
+    });
+  });
+
+  document.querySelectorAll('.btn-remove-wasm-param').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const row = e.target.closest('.wasm-param-row');
+      const aName = row.getAttribute('data-agent');
+      const idx = parseInt(row.getAttribute('data-idx'));
+      
+      const paramsList = Object.entries(state.agents[aName].params || {});
+      const key = paramsList[idx][0];
+      delete state.agents[aName].params[key];
+      
+      localStorage.setItem(`vized_state_${activeProfile}`, JSON.stringify(state));
+      renderVisualEditor();
+      syncYAMLFromVisuals();
     });
   });
 }
@@ -1485,6 +1942,33 @@ function bindUIEvents() {
           </div>
         </div>
       `;
+    } else if (type === 'sandbox') {
+      let sandboxOpts = `<option value="">-- Inline / Custom Sandbox --</option>`;
+      Object.keys(state.sandboxes || {}).forEach(sName => {
+        sandboxOpts += `<option value="${sName}">${sName}</option>`;
+      });
+      toolFields.innerHTML = `
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+          <div class="form-group full-width">
+            <label class="form-label">Reference Registered Sandbox</label>
+            <select id="t-sandbox-ref" class="form-select">
+              ${sandboxOpts}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Or VM Type</label>
+            <input type="text" id="t-sandbox-type" class="form-input" value="gno" placeholder="gno | quickjs | starlark">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Execution Timeout</label>
+            <input type="text" id="t-sandbox-timeout" class="form-input" value="5s" placeholder="5s">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Memory Limit (MB)</label>
+            <input type="number" id="t-sandbox-mem" class="form-input" value="128" placeholder="128">
+          </div>
+        </div>
+      `;
     }
   });
   
@@ -1567,6 +2051,15 @@ function bindUIEvents() {
         driver: document.getElementById('t-db-driver').value.trim() || 'postgres',
         dsn: document.getElementById('t-db-dsn').value.trim() || ''
       };
+    } else if (type === 'sandbox') {
+      const ref = document.getElementById('t-sandbox-ref').value;
+      if (ref) {
+        tCfg.sandbox = ref;
+      } else {
+        tCfg.type = document.getElementById('t-sandbox-type').value.trim() || 'gno';
+        tCfg.timeout = document.getElementById('t-sandbox-timeout').value.trim() || '5s';
+        tCfg.memory_limit_mb = parseInt(document.getElementById('t-sandbox-mem').value) || 128;
+      }
     }
     
     // Parse dynamic parameters list
@@ -1709,6 +2202,233 @@ function bindUIEvents() {
       handleChatSubmission();
     }
   });
+
+  // VM Sandbox Modal Event Listeners
+  document.getElementById('btn-add-sandbox').addEventListener('click', () => {
+    document.getElementById('s-name').value = "";
+    document.getElementById('s-type').value = "quickjs";
+    document.getElementById('s-memory').value = "128";
+    document.getElementById('s-timeout').value = "5s";
+    document.getElementById('s-net').value = "";
+    
+    // Tools list
+    const toolsContainer = document.getElementById('sandbox-tools-list');
+    toolsContainer.innerHTML = "";
+    Object.keys(state.tools).forEach(tName => {
+      const chip = document.createElement('div');
+      chip.className = "selector-chip";
+      chip.innerHTML = `<input type="checkbox" style="display:none;" value="${tName}"> ${tName}`;
+      chip.addEventListener('click', () => {
+        chip.classList.toggle('selected');
+        const chk = chip.querySelector('input');
+        chk.checked = !chk.checked;
+      });
+      toolsContainer.appendChild(chip);
+    });
+    
+    document.getElementById('sandbox-env-list').innerHTML = "";
+    document.getElementById('sandbox-modal').classList.add('active');
+  });
+
+  function addSandboxEnvRow(key = "", val = "") {
+    const list = document.getElementById('sandbox-env-list');
+    const row = document.createElement('div');
+    row.className = "sandbox-env-row";
+    row.style.display = "grid";
+    row.style.gridTemplateColumns = "1fr 1fr auto";
+    row.style.gap = "8px";
+    row.style.alignItems = "center";
+    row.style.marginBottom = "6px";
+    
+    row.innerHTML = `
+      <input type="text" class="form-input env-key" value="${key}" placeholder="VAR_NAME" style="padding:6px 10px;">
+      <input type="text" class="form-input env-val" value="${val}" placeholder="value" style="padding:6px 10px;">
+      <button type="button" class="btn btn-danger btn-remove-env" style="padding:6px 10px; min-width:32px; display:flex; align-items:center; justify-content:center;">✕</button>
+    `;
+    
+    row.querySelector('.btn-remove-env').addEventListener('click', () => {
+      row.remove();
+    });
+    
+    list.appendChild(row);
+  }
+
+  document.getElementById('btn-add-sandbox-env').addEventListener('click', () => {
+    addSandboxEnvRow("", "");
+  });
+
+  document.getElementById('btn-submit-sandbox').addEventListener('click', () => {
+    const name = document.getElementById('s-name').value.trim();
+    const type = document.getElementById('s-type').value;
+    const mem = parseInt(document.getElementById('s-memory').value) || 128;
+    const timeout = document.getElementById('s-timeout').value.trim() || '5s';
+    const netRaw = document.getElementById('s-net').value.trim();
+    
+    if (!name) {
+      showToast("Sandbox name is required", "error");
+      return;
+    }
+    
+    const allowedNet = netRaw ? netRaw.split(',').map(s => s.trim()).filter(s => s) : [];
+    
+    // Checked tools
+    const allowedTools = [];
+    document.querySelectorAll('#sandbox-tools-list .selector-chip.selected input').forEach(chk => {
+      allowedTools.push(chk.value);
+    });
+    
+    // Env vars
+    const env = {};
+    document.querySelectorAll('.sandbox-env-row').forEach(row => {
+      const k = row.querySelector('.env-key').value.trim();
+      const v = row.querySelector('.env-val').value;
+      if (k) {
+        env[k] = v;
+      }
+    });
+    
+    if (!state.sandboxes) state.sandboxes = {};
+    
+    state.sandboxes[name] = {
+      type: type,
+      memory_limit_mb: mem,
+      timeout: timeout,
+      allow_net: allowedNet,
+      allow_tools: allowedTools,
+      env: env
+    };
+    
+    saveStateToProfile(activeProfile);
+    renderVisualEditor();
+    syncYAMLFromVisuals();
+    document.getElementById('sandbox-modal').classList.remove('active');
+  });
+
+  // Lifecycle Plugin Modal Event Listeners
+  const pluginModalType = document.getElementById('p-type');
+  const pluginFields = document.getElementById('plugin-type-fields');
+  
+  function updatePluginModalFields(type) {
+    pluginFields.innerHTML = "";
+    if (type === 'retry_and_reflect') {
+      pluginFields.innerHTML = `
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+          <div class="form-group">
+            <label class="form-label">Max Retries</label>
+            <input type="number" id="p-retry-max" class="form-input" value="3" min="1">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Plugin Scope</label>
+            <select id="p-retry-scope" class="form-select">
+              <option value="invocation">invocation</option>
+              <option value="global">global</option>
+            </select>
+          </div>
+          <div class="form-group full-width" style="padding-top:8px;">
+            <label class="form-label" style="display:flex; align-items:center; gap:8px;">
+              <input type="checkbox" id="p-retry-err" style="width:16px; height:16px;"> Error if retries exceeded
+            </label>
+          </div>
+        </div>
+      `;
+    } else if (type === 'wasm') {
+      pluginFields.innerHTML = `
+        <div class="form-group">
+          <label class="form-label">WASM Module File Path</label>
+          <input type="text" id="p-wasm-path" class="form-input" placeholder="./plugins/plugin.wasm">
+        </div>
+        <div style="border-top:1px solid var(--border-color); margin-top:12px; padding-top:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <label class="form-label" style="margin:0;">Custom Configuration (Params)</label>
+            <button type="button" id="btn-add-plugin-config" class="btn" style="padding:4px 8px; font-size:11px;">+ Add Config Param</button>
+          </div>
+          <div id="plugin-config-list" style="display:flex; flex-direction:column; gap:8px;">
+            <!-- Dynamic plugin config rows -->
+          </div>
+        </div>
+      `;
+      
+      document.getElementById('btn-add-plugin-config').addEventListener('click', () => {
+        addPluginConfigRow("", "");
+      });
+    }
+  }
+
+  function addPluginConfigRow(key = "", val = "") {
+    const list = document.getElementById('plugin-config-list');
+    const row = document.createElement('div');
+    row.className = "plugin-config-row";
+    row.style.display = "grid";
+    row.style.gridTemplateColumns = "1fr 1fr auto";
+    row.style.gap = "8px";
+    row.style.alignItems = "center";
+    row.style.marginBottom = "6px";
+    
+    row.innerHTML = `
+      <input type="text" class="form-input config-key" value="${key}" placeholder="Param Key" style="padding:6px 10px;">
+      <input type="text" class="form-input config-val" value="${val}" placeholder="value" style="padding:6px 10px;">
+      <button type="button" class="btn btn-danger btn-remove-config" style="padding:6px 10px; min-width:32px; display:flex; align-items:center; justify-content:center;">✕</button>
+    `;
+    
+    row.querySelector('.btn-remove-config').addEventListener('click', () => {
+      row.remove();
+    });
+    
+    list.appendChild(row);
+  }
+
+  pluginModalType.addEventListener('change', () => {
+    updatePluginModalFields(pluginModalType.value);
+  });
+
+  document.getElementById('btn-add-plugin').addEventListener('click', () => {
+    document.getElementById('p-name').value = "";
+    pluginModalType.value = "logging";
+    updatePluginModalFields("logging");
+    document.getElementById('plugin-modal').classList.add('active');
+  });
+
+  document.getElementById('btn-submit-plugin').addEventListener('click', () => {
+    const name = document.getElementById('p-name').value.trim();
+    const type = pluginModalType.value;
+    
+    if (!name) {
+      showToast("Plugin name is required", "error");
+      return;
+    }
+    
+    const pCfg = {
+      type: type,
+      name: name
+    };
+    
+    if (type === 'retry_and_reflect') {
+      pCfg.max_retries = parseInt(document.getElementById('p-retry-max').value) || 3;
+      pCfg.scope = document.getElementById('p-retry-scope').value;
+      pCfg.error_if_retry_exceeded = document.getElementById('p-retry-err').checked;
+    } else if (type === 'wasm') {
+      pCfg.module_path = document.getElementById('p-wasm-path').value.trim();
+      pCfg.config = {};
+      document.querySelectorAll('.plugin-config-row').forEach(row => {
+        const k = row.querySelector('.config-key').value.trim();
+        const v = row.querySelector('.config-val').value;
+        if (k) {
+          pCfg.config[k] = v;
+        }
+      });
+      if (Object.keys(pCfg.config).length === 0) {
+        delete pCfg.config;
+      }
+    }
+    
+    if (!state.plugins) state.plugins = [];
+    state.plugins.push(pCfg);
+    
+    saveStateToProfile(activeProfile);
+    renderVisualEditor();
+    syncYAMLFromVisuals();
+    document.getElementById('plugin-modal').classList.remove('active');
+  });
 }
 
 // ----------------------------------------------------
@@ -1803,22 +2523,109 @@ async function handleChatSubmission() {
   
   // Construct context payload with developer schema rules
   const systemPrompt = `You are a professional assistant specialized in designing Go Agentic structures.
-Your sole job is to design, generate, and edit config files matching the strict framework schema.
+Your sole job is to design, generate, and edit config files matching the strict framework schema (Agentic v2 specification).
 
 Strict Schema Rules:
-- root_agent: <AgentName>
+- root_agent: <AgentName> (Entrypoint agent. Defaults to RootAgent if omitted)
+- console: <boolean, optional> (Enable console launcher)
+- webui: <boolean, optional> (Enable Web UI launcher)
+- openclaw: <boolean, optional> (Enable OpenClaw WebSocket gateway)
+- a2a: <boolean, optional> (Enable Agent-to-Agent launcher)
+
 - models:
-    <alias>: { provider: [gemini|openai|ollama|ml], model_id: <string>, default: [true|false], base_url: <string, optional>, model_path: <string, optional> }
+    <alias>:
+      provider: [gemini|openai|ollama|ml]
+      model_id: <string>
+      default: <boolean>
+      api_key: <string, optional>
+      base_url: <string, optional>
+      model_path: <string, optional, for local GGUF models>
+      threads: <number, optional, for local GGUF models>
+
+- session: (optional)
+    provider: [database|inmemory|gnogent|vertexai]
+    driver: [postgres|sqlite]
+    dsn: <string>
+    auto_migrate: <boolean>
+
+- memory: (optional)
+    provider: [database|inmemory|gnogent|prolog]
+    driver: [postgres|sqlite]
+    dsn: <string>
+    auto_migrate: <boolean>
+    kb_path: <string, optional, for prolog memory>
+
+- auth: (optional)
+    jwt:
+      public_key_path: <string>
+      issuer: <string>
+      audience: <string>
+
+- plugins: (optional list of framework plugins)
+    - type: [logging|retry_and_reflect|wasm]
+      name: <string>
+      # if type is retry_and_reflect:
+      max_retries: <number>
+      error_if_retry_exceeded: <boolean>
+      scope: [invocation|global]
+      # if type is wasm:
+      module_path: <string>
+      config: <map of custom parameters, optional>
+
 - tools:
-    <tool_name>: { type: [builtin|gemini|sandbox|userdb|wasm|logic_query], description: <string>, tool: <string, optional for gemini google_search>, op: <string, optional for userdb>, db: {driver: <string>, dsn: <string>}, kb_path: <string, optional for logic_query>, module_path: <string, optional for wasm> }
+    <tool_name>:
+      type: [builtin|gemini|sandbox|userdb|wasm|logic_query]
+      description: <string>
+      parameters: (optional map of parameter schemas)
+        <param_name>: { type: [string|number|boolean], description: <string, optional>, required: <boolean> }
+      # type-specific fields:
+      # if type is gemini:
+      tool: [google_search]
+      # if type is sandbox:
+      type: [gno] # VM type
+      timeout: <string, e.g. 5s>
+      memory_limit_mb: <number, e.g. 128>
+      allow_tools: <boolean, optional>
+      allow_net: <boolean, optional>
+      env: <map of environment variables, optional>
+      # if type is userdb:
+      op: [get_profile|create_user|update_status|update_roles|update_channels|delete_user]
+      db: { driver: [postgres|sqlite], dsn: <string> }
+      # if type is wasm:
+      module_path: <string>
+      security: { allowed_paths: [list of strings], allowed_domains: [list of strings] }
+      # if type is logic_query:
+      kb_path: <string> # path to prolog knowledge base, e.g., ./knowledge.pl
+
 - agents:
     <AgentName>:
+      type: [llm|sequential|parallel|loop|workflow|routing|wasm|gnogent|route_generator] (default is llm)
       description: <string>
+      # for llm, routing, workflow, gnogent, wasm agents:
       model: <model_alias>
       instruction: |
         <multiline instruction block>
       tools: [list of tool names]
-      sub_agents: [list of other agent names for transfer_to_agent routing]
+      sub_agents: [list of other agent names for transfers / orchestration]
+      mcp_toolsets: (optional list of external MCP servers)
+        - endpoint: <url>
+      # if type is loop:
+      max_iterations: <number>
+      # if type is routing:
+      admin_users: [list of strings]
+      role_routes:
+        <role_name>: <sub_agent_name>
+      # if type is wasm:
+      module_path: <string>
+      # if type is workflow (DAG-based workflow):
+      nodes:
+        - name: <node_name>
+          agent: <agent_name, optional>
+          tool: <tool_name, optional>
+      edges:
+        - from: [START|<node_name>]
+          to: <node_name>
+          route: [DEFAULT|true|false|<custom_routing_value>]
 
 Always supply the full, valid YAML configuration inside a standard markdown code block:
 \`\`\`yaml
